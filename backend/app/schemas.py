@@ -158,6 +158,53 @@ class ModelJobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SVDHyperparametersIn(BaseModel):
+    factors: int = Field(default=100, ge=10, le=300)
+    epochs: int = Field(default=15, ge=1, le=100)
+    learning_rate: float = Field(default=0.01, gt=0, le=1.0)
+    regularization: float = Field(default=0.05, ge=0, le=1.0)
+
+
+class SVDTuningSpaceIn(BaseModel):
+    factors: list[int] = Field(default_factory=lambda: [50, 100, 150])
+    learning_rates: list[float] = Field(default_factory=lambda: [0.005, 0.01, 0.02])
+    regularizations: list[float] = Field(default_factory=lambda: [0.02, 0.05, 0.1])
+    epochs: list[int] = Field(default_factory=lambda: [10, 15])
+
+
+class SVDTrainingRequest(BaseModel):
+    max_ratings: int = Field(default=60000, ge=1000, le=400000)
+    test_ratio: float = Field(default=0.2, gt=0.05, lt=0.5)
+    random_seed: int = Field(default=42, ge=1, le=1_000_000)
+    min_user_ratings: int = Field(default=2, ge=1, le=50)
+    min_book_ratings: int = Field(default=2, ge=1, le=50)
+    hyperparameters: SVDHyperparametersIn = Field(default_factory=SVDHyperparametersIn)
+    enable_tuning: bool = False
+    max_trials: int = Field(default=12, ge=1, le=100)
+    tuning_space: SVDTuningSpaceIn = Field(default_factory=SVDTuningSpaceIn)
+
+
+class SVDTrainingResult(BaseModel):
+    model_type: str
+    selected_hyperparameters: SVDHyperparametersIn
+    train_rmse: float
+    test_rmse: float
+    accuracy: float
+    precision: float
+    recall: float
+    f1_score: float
+    training_duration_seconds: float
+    ratings_used: int
+    users_used: int
+    books_used: int
+    trials_run: int
+
+
+class SVDTrainingResponse(BaseModel):
+    job: ModelJobOut
+    result: SVDTrainingResult
+
+
 class UserActivityOut(BaseModel):
     month: str
     users: int
