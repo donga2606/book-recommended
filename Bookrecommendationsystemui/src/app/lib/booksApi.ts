@@ -6,6 +6,7 @@ const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
 });
+let userTokenCache: string | null = null;
 
 interface ApiBook {
   id: number;
@@ -27,6 +28,17 @@ interface ApiPaginatedBooks {
   page_size: number;
 }
 
+interface ApiRecommendationItem {
+  book: ApiBook;
+  reason: string;
+  predicted_rating: number | null;
+  rank: number;
+}
+
+interface ApiRecommendationList {
+  items: ApiRecommendationItem[];
+}
+
 export interface Book {
   id: number;
   title: string;
@@ -45,6 +57,13 @@ export interface PaginatedBooks {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface RecommendedBook {
+  book: Book;
+  reason: string;
+  predictedRating: number | null;
+  rank: number;
 }
 
 export interface BooksQueryParams {
@@ -68,6 +87,18 @@ function mapBook(book: ApiBook): Book {
     pageCount: book.page_count,
     isbn: book.isbn,
   };
+}
+
+async function getUserToken(): Promise<string> {
+  if (userTokenCache) {
+    return userTokenCache;
+  }
+  const response = await apiClient.post<{ access_token: string }>("/auth/login", {
+    email: "alex.johnson@example.com",
+    password: "password123",
+  });
+  userTokenCache = response.data.access_token;
+  return userTokenCache;
 }
 
 export async function listBooks(params: BooksQueryParams = {}): Promise<PaginatedBooks> {
@@ -104,4 +135,18 @@ export async function getSimilarBooks(bookId: number, limit = 4): Promise<Book[]
     params: { limit },
   });
   return response.data.map(mapBook);
+}
+
+export async function listRecommendedBooks(limit = 6): Promise<RecommendedBook[]> {
+  const token = await getUserToken();
+  const response = await apiClient.get<ApiRecommendationList>("/users/me/recommendations", {
+    params: { limit },
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data.items.map((item) => ({
+    book: mapBook(item.book),
+    reason: item.reason,
+    predictedRating: item.predicted_rating,
+    rank: item.rank,
+  }));
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import math
 import random
 import time
@@ -39,6 +40,15 @@ class SVDEvaluation:
     ratings_used: int
     users_used: int
     books_used: int
+    model: "TrainedSVDModel"
+
+
+@dataclass
+class TrainedSVDModel:
+    global_mean: float
+    item_bias: np.ndarray
+    item_factors: np.ndarray
+    item_index: dict[str, int]
 
 
 def load_ratings_from_csv(
@@ -211,6 +221,88 @@ def _binary_metrics(
     return accuracy * 100.0, precision * 100.0, recall * 100.0, f1_score * 100.0
 
 
+def save_model_artifact(path: Path, model: TrainedSVDModel) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    npz_path = path.with_suffix(".npz")
+    meta_path = path.with_suffix(".json")
+    np.savez_compressed(
+        npz_path,
+        item_bias=model.item_bias,
+        item_factors=model.item_factors,
+    )
+    meta_path.write_text(
+        json.dumps(
+            {
+                "global_mean": model.global_mean,
+                "item_index": model.item_index,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def load_model_artifact(path: Path) -> TrainedSVDModel | None:
+    npz_path = path.with_suffix(".npz")
+    meta_path = path.with_suffix(".json")
+    if not npz_path.exists() or not meta_path.exists():
+        return None
+    arrays = np.load(npz_path, allow_pickle=False)
+    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+    item_index = {str(key): int(value) for key, value in metadata.get("item_index", {}).items()}
+    return TrainedSVDModel(
+        global_mean=float(metadata.get("global_mean", 0.0)),
+        item_bias=np.array(arrays["item_bias"], dtype=np.float64),
+        item_factors=np.array(arrays["item_factors"], dtype=np.float64),
+        item_index=item_index,
+    )
+
+
+def estimate_user_profile(
+    model: TrainedSVDModel,
+    user_ratings: list[tuple[str, float]],
+    steps: int = 50,
+    learning_rate: float = 0.05,
+    regularization: float = 0.02,
+) -> tuple[float, np.ndarray] | None:
+    rated_known = [
+        (model.item_index[isbn], rating)
+        for isbn, rating in user_ratings
+        if isbn in model.item_index
+    ]
+    if not rated_known:
+        return None
+
+    factors_dim = model.item_factors.shape[1]
+    user_bias = 0.0
+    user_factors = np.zeros(factors_dim, dtype=np.float64)
+    for _ in range(max(steps, 1)):
+        for item_idx, actual in rated_known:
+            pred = model.global_mean + user_bias + model.item_bias[item_idx] + np.dot(
+                user_factors, model.item_factors[item_idx]
+            )
+            err = actual - pred
+            user_bias += learning_rate * (err - regularization * user_bias)
+            pu = user_factors.copy()
+            qi = model.item_factors[item_idx]
+            user_factors += learning_rate * (err * qi - regularization * pu)
+    return float(user_bias), user_factors
+
+
+def predict_with_profile(
+    model: TrainedSVDModel,
+    isbn: str,
+    user_profile: tuple[float, np.ndarray],
+) -> float | None:
+    item_idx = model.item_index.get(isbn)
+    if item_idx is None:
+        return None
+    user_bias, user_factors = user_profile
+    value = model.global_mean + user_bias + float(model.item_bias[item_idx]) + float(
+        np.dot(user_factors, model.item_factors[item_idx])
+    )
+    return float(np.clip(value, 0.0, 5.0))
+
+
 def train_and_evaluate_svd(
     ratings: list[tuple[int, str, float]],
     params: SVDHyperParams,
@@ -305,4 +397,10 @@ def train_and_evaluate_svd(
         ratings_used=len(ratings),
         users_used=len(user_index),
         books_used=len(item_index),
+        model=TrainedSVDModel(
+            global_mean=global_mean,
+            item_bias=item_bias.copy(),
+            item_factors=item_factors.copy(),
+            item_index=dict(item_index),
+        ),
     )

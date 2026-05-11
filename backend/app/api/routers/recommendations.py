@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import asc, select
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.models import Book, ReadingListItem, Recommendation, User, UserRating
 from app.db.session import get_db
+from app.ml.svd import estimate_user_profile, load_model_artifact, predict_with_profile
 from app.schemas import (
     ReadingListCreate,
     ReadingListOut,
@@ -18,6 +20,7 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/users/me", tags=["recommendations"])
+MODEL_ARTIFACT_PATH = Path(__file__).resolve().parents[3] / "dataset" / "svd_model_latest"
 
 
 def _fallback_recommendations(db: Session, user: User, limit: int) -> list[RecommendationItem]:
@@ -38,12 +41,57 @@ def _fallback_recommendations(db: Session, user: User, limit: int) -> list[Recom
     ]
 
 
+def _svd_recommendations(db: Session, user: User, limit: int) -> list[RecommendationItem]:
+    model = load_model_artifact(MODEL_ARTIFACT_PATH)
+    if model is None:
+        return []
+
+    ratings_rows = db.scalars(select(UserRating).where(UserRating.user_id == user.id)).all()
+    if not ratings_rows:
+        return []
+
+    rated_book_ids = {row.book_id for row in ratings_rows}
+    rated_books = db.scalars(select(Book).where(Book.id.in_(rated_book_ids))).all() if rated_book_ids else []
+    isbn_by_book_id = {book.id: book.isbn for book in rated_books}
+    user_ratings = [
+        (isbn_by_book_id[row.book_id], float(row.stars))
+        for row in ratings_rows
+        if row.book_id in isbn_by_book_id
+    ]
+    profile = estimate_user_profile(model=model, user_ratings=user_ratings)
+    if profile is None:
+        return []
+
+    candidates = db.scalars(select(Book).where(~Book.id.in_(rated_book_ids)).limit(5000)).all()
+    scored: list[tuple[Book, float]] = []
+    for book in candidates:
+        predicted = predict_with_profile(model=model, isbn=book.isbn, user_profile=profile)
+        if predicted is None:
+            continue
+        scored.append((book, predicted))
+    scored.sort(key=lambda item: item[1], reverse=True)
+    top = scored[:limit]
+    return [
+        RecommendationItem(
+            book=book,
+            reason="Predicted by SVD collaborative filtering from your ratings",
+            predicted_rating=round(score, 2),
+            rank=index + 1,
+        )
+        for index, (book, score) in enumerate(top)
+    ]
+
+
 @router.get("/recommendations", response_model=RecommendationList)
 def get_recommendations(
     limit: int = Query(default=6, ge=1, le=50),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RecommendationList:
+    svd_items = _svd_recommendations(db, current_user, limit)
+    if svd_items:
+        return RecommendationList(items=svd_items)
+
     rows = db.scalars(
         select(Recommendation)
         .where(Recommendation.user_id == current_user.id)

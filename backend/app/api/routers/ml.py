@@ -14,6 +14,7 @@ from app.ml.svd import (
     SVDTrainingConfig,
     SVDEvaluation,
     load_ratings_from_csv,
+    save_model_artifact,
     train_and_evaluate_svd,
 )
 from app.schemas import (
@@ -33,6 +34,7 @@ router = APIRouter(
     dependencies=[Depends(require_role(RoleEnum.data_scientist))],
 )
 RATINGS_DATASET_PATH = Path(__file__).resolve().parents[3] / "dataset" / "BX-Book-Ratings.csv"
+MODEL_ARTIFACT_PATH = Path(__file__).resolve().parents[3] / "dataset" / "svd_model_latest"
 
 
 def _upsert_metrics(db: Session, metrics: SVDEvaluation) -> None:
@@ -189,6 +191,7 @@ def train_svd_model(
 
         _upsert_metrics(db, best_metrics)
         _log_experiment(db, selected, best_metrics.test_rmse, status_label="active")
+        save_model_artifact(MODEL_ARTIFACT_PATH, best_metrics.model)
 
         job.status = JobStatusEnum.completed
         job.updated_at = datetime.utcnow()
