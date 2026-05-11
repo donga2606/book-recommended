@@ -1,3 +1,8 @@
+import csv
+import os
+from collections import defaultdict
+from pathlib import Path
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,6 +21,103 @@ from app.db.models import (
     User,
     UserRating,
 )
+
+
+DATASET_DIR = Path(__file__).resolve().parents[2] / "dataset"
+BOOKS_CSV_PATH = DATASET_DIR / "BX-Books.csv"
+RATINGS_CSV_PATH = DATASET_DIR / "BX-Book-Ratings.csv"
+
+
+def _to_int(value: str, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _infer_genre(title: str) -> str:
+    lowered = title.lower()
+    if any(token in lowered for token in ("murder", "mystery", "detective", "crime")):
+        return "Mystery"
+    if any(token in lowered for token in ("love", "romance", "wedding", "heart")):
+        return "Romance"
+    if any(token in lowered for token in ("dragon", "magic", "wizard", "fantasy")):
+        return "Fantasy"
+    if any(token in lowered for token in ("space", "galaxy", "alien", "robot", "future")):
+        return "Science Fiction"
+    if any(token in lowered for token in ("history", "war", "empire", "world")):
+        return "History"
+    if any(token in lowered for token in ("business", "money", "finance", "invest")):
+        return "Business"
+    return "General"
+
+
+def _load_average_ratings() -> dict[str, float]:
+    if not RATINGS_CSV_PATH.exists():
+        return {}
+
+    totals: defaultdict[str, int] = defaultdict(int)
+    counts: defaultdict[str, int] = defaultdict(int)
+    with RATINGS_CSV_PATH.open("r", encoding="latin-1", newline="") as handle:
+        reader = csv.reader(handle, delimiter=";", quotechar='"')
+        for row in reader:
+            if len(row) < 3:
+                continue
+            isbn = row[1].strip().strip('"')
+            rating = _to_int(row[2].strip().strip('"'), default=0)
+            # In Book-Crossing, 0 is implicit feedback, not an explicit rating.
+            if not isbn or rating <= 0:
+                continue
+            totals[isbn] += rating
+            counts[isbn] += 1
+    return {isbn: totals[isbn] / counts[isbn] for isbn in counts}
+
+
+def _load_books_from_dataset(max_books: int, average_ratings: dict[str, float]) -> list[Book]:
+    if not BOOKS_CSV_PATH.exists():
+        return []
+
+    books: list[Book] = []
+    seen_isbns: set[str] = set()
+    with BOOKS_CSV_PATH.open("r", encoding="latin-1", newline="") as handle:
+        reader = csv.reader(handle, delimiter=";", quotechar='"')
+        for row in reader:
+            if len(row) < 8:
+                continue
+            raw_isbn, raw_title, raw_author, raw_year, raw_publisher, raw_thumb, raw_medium, raw_large = row[:8]
+            isbn = raw_isbn.strip().strip('"')
+            title = raw_title.strip().strip('"')
+            author = raw_author.strip().strip('"')
+            publisher = raw_publisher.strip().strip('"')
+            if not isbn or isbn in seen_isbns or not title or not author:
+                continue
+
+            year = _to_int(raw_year.strip().strip('"'))
+            if year < 0 or year > 2100:
+                year = 0
+
+            cover_url = raw_large.strip().strip('"') or raw_medium.strip().strip('"') or raw_thumb.strip().strip('"')
+            if not cover_url:
+                cover_url = "https://via.placeholder.com/300x450?text=No+Cover"
+
+            books.append(
+                Book(
+                    title=title,
+                    author=author,
+                    genre=_infer_genre(title),
+                    rating=round(float(average_ratings.get(isbn, 0.0)), 2),
+                    cover_url=cover_url,
+                    description=f"Publisher: {publisher or 'Unknown'}",
+                    year_published=year,
+                    page_count=0,
+                    isbn=isbn,
+                )
+            )
+            seen_isbns.add(isbn)
+
+            if len(books) >= max_books:
+                break
+    return books
 
 
 def seed_data(db: Session) -> None:
@@ -49,50 +151,48 @@ def seed_data(db: Session) -> None:
         ),
     ]
     db.add_all(users)
-
-    books = [
-        Book(id=1, title="The Midnight Library", author="Matt Haig", genre="Fiction", rating=4.5, cover_url="https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400", description="Between life and death there is a library, and within that library, the shelves go on forever. Every book provides a chance to try another life you could have lived.", year_published=2020, page_count=304, isbn="978-0525559474"),
-        Book(id=2, title="Project Hail Mary", author="Andy Weir", genre="Science Fiction", rating=4.8, cover_url="https://images.unsplash.com/photo-1614544048536-0d28caf77f41?w=400", description="Ryland Grace is the sole survivor on a desperate, last-chance mission to save both humanity and Earth itself.", year_published=2021, page_count=476, isbn="978-0593135204"),
-        Book(id=3, title="The Seven Husbands of Evelyn Hugo", author="Taylor Jenkins Reid", genre="Historical Fiction", rating=4.6, cover_url="https://images.unsplash.com/photo-1512820790803-83ca734da794?w=400", description="Aging and reclusive Hollywood movie icon Evelyn Hugo is finally ready to tell the truth about her glamorous and scandalous life.", year_published=2017, page_count=400, isbn="978-1501161933"),
-        Book(id=4, title="Where the Crawdads Sing", author="Delia Owens", genre="Mystery", rating=4.4, cover_url="https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400", description="For years, rumors of the 'Marsh Girl' have haunted Barkley Cove, a quiet town on the North Carolina coast.", year_published=2018, page_count=384, isbn="978-0735219090"),
-        Book(id=5, title="The Silent Patient", author="Alex Michaelides", genre="Thriller", rating=4.3, cover_url="https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=400", description="Alicia Berenson's life is seemingly perfect. Until one evening when she shoots her husband five times in the face.", year_published=2019, page_count=336, isbn="978-1250301697"),
-        Book(id=6, title="Atomic Habits", author="James Clear", genre="Self-Help", rating=4.7, cover_url="https://images.unsplash.com/photo-1506880018603-83d5b814b5a6?w=400", description="An Easy & Proven Way to Build Good Habits & Break Bad Ones. No matter your goals, Atomic Habits offers a proven framework.", year_published=2018, page_count=320, isbn="978-0735211292"),
-        Book(id=7, title="The Invisible Life of Addie LaRue", author="V.E. Schwab", genre="Fantasy", rating=4.5, cover_url="https://images.unsplash.com/photo-1532012197267-da84d127e765?w=400", description="A Life No One Will Remember. A Story You Will Never Forget. France, 1714: in a moment of desperation, a young woman makes a Faustian bargain.", year_published=2020, page_count=448, isbn="978-0765387561"),
-        Book(id=8, title="Dune", author="Frank Herbert", genre="Science Fiction", rating=4.6, cover_url="https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=400", description="Set on the desert planet Arrakis, Dune is the story of the boy Paul Atreides, heir to a noble family tasked with ruling this inhospitable world.", year_published=1965, page_count=688, isbn="978-0441172719"),
-        Book(id=9, title="Educated", author="Tara Westover", genre="Biography", rating=4.7, cover_url="https://images.unsplash.com/photo-1457369804613-52c61a468e7d?w=400", description="Born to survivalists in the mountains of Idaho, Tara Westover was seventeen the first time she set foot in a classroom.", year_published=2018, page_count=352, isbn="978-0399590504"),
-        Book(id=10, title="The Song of Achilles", author="Madeline Miller", genre="Historical Fiction", rating=4.6, cover_url="https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400", description="A tale of gods, kings, immortal fame and the human heart, The Song of Achilles is a dazzling literary feat.", year_published=2012, page_count=416, isbn="978-0062060624"),
-        Book(id=11, title="Circe", author="Madeline Miller", genre="Fantasy", rating=4.5, cover_url="https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=400", description="In the house of Helios, god of the sun and mightiest of the Titans, a daughter is born. But Circe is a strange child.", year_published=2018, page_count=400, isbn="978-0316556347"),
-        Book(id=12, title="The Psychology of Money", author="Morgan Housel", genre="Business", rating=4.6, cover_url="https://images.unsplash.com/photo-1592496431122-2349e0fbc666?w=400", description="Doing well with money isn't necessarily about what you know. It's about how you behave.", year_published=2020, page_count=256, isbn="978-0857197689"),
-    ]
+    seed_book_limit = _to_int(os.getenv("SEED_BOOK_LIMIT", "20000"), default=20000)
+    with_ratings = os.getenv("SEED_WITH_RATINGS", "1").lower() not in {"0", "false", "no"}
+    average_ratings = _load_average_ratings() if with_ratings else {}
+    books = _load_books_from_dataset(max_books=seed_book_limit, average_ratings=average_ratings)
+    if not books:
+        raise RuntimeError(
+            "No books found to seed. Expected dataset CSV at backend/dataset/BX-Books.csv."
+        )
     db.add_all(books)
+    db.flush()
+
+    seeded_book_ids = list(db.scalars(select(Book.id).order_by(Book.id.asc()).limit(12)).all())
+    if len(seeded_book_ids) < 12:
+        raise RuntimeError("Expected at least 12 seeded books from dataset.")
 
     db.add_all(
         [
-            Recommendation(user_id=1, book_id=2, reason="Based on your love for science fiction", predicted_rating=4.8, rank=1),
-            Recommendation(user_id=1, book_id=8, reason="Fans of sci-fi classics will love this", predicted_rating=4.6, rank=2),
-            Recommendation(user_id=1, book_id=7, reason="Similar themes to your recent reads", predicted_rating=4.5, rank=3),
-            Recommendation(user_id=1, book_id=11, reason="Popular among readers with your taste", predicted_rating=4.5, rank=4),
-            Recommendation(user_id=1, book_id=3, reason="Historical fiction you might enjoy", predicted_rating=4.6, rank=5),
-            Recommendation(user_id=1, book_id=5, reason="Trending in thriller category", predicted_rating=4.3, rank=6),
+            Recommendation(user_id=1, book_id=seeded_book_ids[1], reason="Based on your reading profile", predicted_rating=4.4, rank=1),
+            Recommendation(user_id=1, book_id=seeded_book_ids[7], reason="Similar readers rated this highly", predicted_rating=4.2, rank=2),
+            Recommendation(user_id=1, book_id=seeded_book_ids[6], reason="Popular in your browsing category", predicted_rating=4.1, rank=3),
+            Recommendation(user_id=1, book_id=seeded_book_ids[10], reason="Frequently read together with your books", predicted_rating=4.0, rank=4),
+            Recommendation(user_id=1, book_id=seeded_book_ids[2], reason="Readers with similar tastes liked it", predicted_rating=4.0, rank=5),
+            Recommendation(user_id=1, book_id=seeded_book_ids[4], reason="Trending title this week", predicted_rating=3.9, rank=6),
         ]
     )
 
     db.add_all(
         [
-            ReadingListItem(user_id=1, book_id=1, status=ReadingStatusEnum.completed),
-            ReadingListItem(user_id=1, book_id=3, status=ReadingStatusEnum.completed),
-            ReadingListItem(user_id=1, book_id=5, status=ReadingStatusEnum.completed),
-            ReadingListItem(user_id=1, book_id=7, status=ReadingStatusEnum.completed),
-            ReadingListItem(user_id=1, book_id=9, status=ReadingStatusEnum.completed),
-            ReadingListItem(user_id=1, book_id=11, status=ReadingStatusEnum.completed),
+            ReadingListItem(user_id=1, book_id=seeded_book_ids[0], status=ReadingStatusEnum.completed),
+            ReadingListItem(user_id=1, book_id=seeded_book_ids[2], status=ReadingStatusEnum.completed),
+            ReadingListItem(user_id=1, book_id=seeded_book_ids[4], status=ReadingStatusEnum.completed),
+            ReadingListItem(user_id=1, book_id=seeded_book_ids[6], status=ReadingStatusEnum.completed),
+            ReadingListItem(user_id=1, book_id=seeded_book_ids[8], status=ReadingStatusEnum.completed),
+            ReadingListItem(user_id=1, book_id=seeded_book_ids[10], status=ReadingStatusEnum.completed),
         ]
     )
 
     db.add_all(
         [
-            UserRating(user_id=1, book_id=2, stars=5),
-            UserRating(user_id=1, book_id=8, stars=5),
-            UserRating(user_id=1, book_id=6, stars=4),
+            UserRating(user_id=1, book_id=seeded_book_ids[1], stars=5),
+            UserRating(user_id=1, book_id=seeded_book_ids[7], stars=5),
+            UserRating(user_id=1, book_id=seeded_book_ids[5], stars=4),
         ]
     )
 
@@ -132,26 +232,26 @@ def seed_data(db: Session) -> None:
 
     db.add_all(
         [
-            AnalyticsPopularBook(title="Project Hail Mary", reads=342),
-            AnalyticsPopularBook(title="Educated", reads=298),
-            AnalyticsPopularBook(title="Atomic Habits", reads=276),
-            AnalyticsPopularBook(title="The Midnight Library", reads=265),
-            AnalyticsPopularBook(title="Dune", reads=234),
+            AnalyticsPopularBook(title=books[0].title, reads=342),
+            AnalyticsPopularBook(title=books[1].title, reads=298),
+            AnalyticsPopularBook(title=books[2].title, reads=276),
+            AnalyticsPopularBook(title=books[3].title, reads=265),
+            AnalyticsPopularBook(title=books[4].title, reads=234),
         ]
     )
 
     db.add_all(
         [
-            AnalyticsTopRatedBook(title="Project Hail Mary", ratings_count=487, avg_rating=4.8),
-            AnalyticsTopRatedBook(title="Educated", ratings_count=445, avg_rating=4.7),
-            AnalyticsTopRatedBook(title="Atomic Habits", ratings_count=423, avg_rating=4.7),
-            AnalyticsTopRatedBook(title="The Song of Achilles", ratings_count=398, avg_rating=4.6),
-            AnalyticsTopRatedBook(title="Dune", ratings_count=376, avg_rating=4.6),
-            AnalyticsTopRatedBook(title="The Seven Husbands...", ratings_count=354, avg_rating=4.6),
-            AnalyticsTopRatedBook(title="The Psychology of Money", ratings_count=332, avg_rating=4.6),
-            AnalyticsTopRatedBook(title="Circe", ratings_count=312, avg_rating=4.5),
-            AnalyticsTopRatedBook(title="The Midnight Library", ratings_count=298, avg_rating=4.5),
-            AnalyticsTopRatedBook(title="The Invisible Life...", ratings_count=276, avg_rating=4.5),
+            AnalyticsTopRatedBook(title=books[0].title, ratings_count=487, avg_rating=max(books[0].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[1].title, ratings_count=445, avg_rating=max(books[1].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[2].title, ratings_count=423, avg_rating=max(books[2].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[3].title, ratings_count=398, avg_rating=max(books[3].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[4].title, ratings_count=376, avg_rating=max(books[4].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[5].title, ratings_count=354, avg_rating=max(books[5].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[6].title, ratings_count=332, avg_rating=max(books[6].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[7].title, ratings_count=312, avg_rating=max(books[7].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[8].title, ratings_count=298, avg_rating=max(books[8].rating, 3.5)),
+            AnalyticsTopRatedBook(title=books[9].title, ratings_count=276, avg_rating=max(books[9].rating, 3.5)),
         ]
     )
 

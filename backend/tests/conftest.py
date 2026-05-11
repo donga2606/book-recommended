@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 
 import pytest
@@ -30,6 +31,8 @@ def override_get_db() -> Generator[Session, None, None]:
 
 @pytest.fixture(autouse=True)
 def setup_database() -> Generator[None, None, None]:
+    os.environ["SEED_BOOK_LIMIT"] = "200"
+    os.environ["SEED_WITH_RATINGS"] = "0"
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     with TestingSessionLocal() as db:
