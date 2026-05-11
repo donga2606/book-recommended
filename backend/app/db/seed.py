@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash
@@ -70,7 +70,8 @@ def _load_average_ratings() -> dict[str, float]:
                 continue
             totals[isbn] += rating
             counts[isbn] += 1
-    return {isbn: totals[isbn] / counts[isbn] for isbn in counts}
+    # Book-Crossing explicit ratings are on a 1-10 scale; convert to 0-5.
+    return {isbn: min(5.0, (totals[isbn] / counts[isbn]) / 2.0) for isbn in counts}
 
 
 def _load_books_from_dataset(max_books: int, average_ratings: dict[str, float]) -> list[Book]:
@@ -122,6 +123,14 @@ def _load_books_from_dataset(max_books: int, average_ratings: dict[str, float]) 
 
 def seed_data(db: Session) -> None:
     if db.scalar(select(Book.id).limit(1)) is not None:
+        # Backward-compatibility fix for DBs seeded before rating scale normalization.
+        if db.scalar(select(Book.id).where(Book.rating > 5).limit(1)) is not None:
+            db.execute(
+                update(Book)
+                .where(Book.rating > 5)
+                .values(rating=func.round(Book.rating / 2.0, 2))
+            )
+            db.commit()
         return
 
     users = [

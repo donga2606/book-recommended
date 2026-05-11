@@ -1,9 +1,18 @@
 import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { Search as SearchIcon, Star, SlidersHorizontal } from "lucide-react";
-import { books, genres } from "../../data/mockData";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
+import { listBooks, listGenres } from "../../lib/booksApi";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "../../components/ui/pagination";
 import {
   Select,
   SelectContent,
@@ -12,19 +21,35 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 
+const PAGE_SIZE = 20;
+
 export function Search() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGenre, setSelectedGenre] = useState("All");
   const [minRating, setMinRating] = useState("0");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const filteredBooks = books.filter(book => {
-    const matchesSearch =
-      book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      book.author.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesGenre = selectedGenre === "All" || book.genre === selectedGenre;
-    const matchesRating = book.rating >= parseFloat(minRating);
-    return matchesSearch && matchesGenre && matchesRating;
+  const { data: genres = ["All"] } = useQuery({
+    queryKey: ["genres"],
+    queryFn: listGenres,
   });
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["books", searchQuery, selectedGenre, minRating, currentPage],
+    queryFn: () =>
+      listBooks({
+        q: searchQuery.trim() || undefined,
+        genre: selectedGenre,
+        minRating: Number(minRating),
+        page: currentPage,
+        pageSize: PAGE_SIZE,
+      }),
+    placeholderData: (previousData) => previousData,
+  });
+  const filteredBooks = data?.items ?? [];
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
+  const pageStart = Math.max(1, currentPage - 2);
+  const pageEnd = Math.min(totalPages, pageStart + 4);
+  const pageNumbers = Array.from({ length: pageEnd - pageStart + 1 }, (_, index) => pageStart + index);
 
   return (
     <div className="p-8">
@@ -48,13 +73,22 @@ export function Search() {
               type="text"
               placeholder="Search by title or author..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
               className="pl-10 h-12 rounded-xl border-slate-200"
             />
           </div>
 
           {/* Genre Filter */}
-          <Select value={selectedGenre} onValueChange={setSelectedGenre}>
+          <Select
+            value={selectedGenre}
+            onValueChange={(value) => {
+              setSelectedGenre(value);
+              setCurrentPage(1);
+            }}
+          >
             <SelectTrigger className="w-full md:w-48 h-12 rounded-xl border-slate-200">
               <SelectValue placeholder="Genre" />
             </SelectTrigger>
@@ -68,7 +102,13 @@ export function Search() {
           </Select>
 
           {/* Rating Filter */}
-          <Select value={minRating} onValueChange={setMinRating}>
+          <Select
+            value={minRating}
+            onValueChange={(value) => {
+              setMinRating(value);
+              setCurrentPage(1);
+            }}
+          >
             <SelectTrigger className="w-full md:w-48 h-12 rounded-xl border-slate-200">
               <SelectValue placeholder="Min Rating" />
             </SelectTrigger>
@@ -89,12 +129,18 @@ export function Search() {
       {/* Results */}
       <div className="mb-4">
         <p className="text-sm text-slate-600">
-          Found {filteredBooks.length} {filteredBooks.length === 1 ? "book" : "books"}
+          Found {data?.total ?? 0} {(data?.total ?? 0) === 1 ? "book" : "books"}
         </p>
       </div>
 
       {/* Books Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {isLoading && <p className="text-slate-600">Loading books...</p>}
+        {isError && (
+          <p className="text-red-600">
+            Failed to load books from backend. Make sure backend is running.
+          </p>
+        )}
         {filteredBooks.map(book => (
           <Link
             key={book.id}
@@ -128,6 +174,53 @@ export function Search() {
           </Link>
         ))}
       </div>
+
+      {/* Pagination */}
+      {!isError && (data?.total ?? 0) > 0 && (
+        <div className="mt-8 space-y-2">
+          <p className="text-sm text-slate-600 text-center">
+            Page {currentPage} of {totalPages}
+          </p>
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setCurrentPage((page) => Math.max(1, page - 1));
+                  }}
+                  className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                />
+              </PaginationItem>
+              {pageNumbers.map((page) => (
+                <PaginationItem key={page}>
+                  <PaginationLink
+                    href="#"
+                    isActive={page === currentPage}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setCurrentPage(page);
+                    }}
+                  >
+                    {page}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setCurrentPage((page) => Math.min(totalPages, page + 1));
+                  }}
+                  className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,13 +1,44 @@
 import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { Star, Calendar, BookOpen, Hash, ArrowLeft } from "lucide-react";
-import { books, getSimilarBooks } from "../../data/mockData";
 import { Button } from "../../components/ui/button";
+import { getBook, getSimilarBooks } from "../../lib/booksApi";
 
 export function BookDetail() {
   const { id } = useParams();
-  const book = books.find(b => b.id === Number(id));
-  const similarBooks = getSimilarBooks(Number(id));
+  const bookId = Number(id);
+  const isValidBookId = Number.isFinite(bookId) && bookId > 0;
+  const {
+    data: book,
+    isLoading: isBookLoading,
+    isError: isBookError,
+  } = useQuery({
+    queryKey: ["book", bookId],
+    queryFn: () => getBook(bookId),
+    enabled: isValidBookId,
+  });
+  const { data: similarBooks = [] } = useQuery({
+    queryKey: ["similar-books", bookId],
+    queryFn: () => getSimilarBooks(bookId, 4),
+    enabled: isValidBookId,
+  });
+
+  if (isBookLoading) {
+    return (
+      <div className="p-8">
+        <p className="text-slate-600">Loading book details...</p>
+      </div>
+    );
+  }
+
+  if (isBookError) {
+    return (
+      <div className="p-8">
+        <p className="text-red-600">Failed to load book details from backend.</p>
+      </div>
+    );
+  }
 
   if (!book) {
     return (

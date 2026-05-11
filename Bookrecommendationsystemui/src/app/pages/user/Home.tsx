@@ -1,12 +1,29 @@
 import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { Star, Sparkles } from "lucide-react";
-import { getRecommendedBooks } from "../../data/mockData";
+import { listBooks } from "../../lib/booksApi";
+
+const RECOMMENDATION_REASONS = [
+  "Trending among readers this week",
+  "Strong match for your reading behavior",
+  "Popular in your preferred genres",
+  "Readers with similar ratings enjoyed this",
+  "Good candidate based on book metadata",
+  "Frequently explored with related titles",
+];
 
 export function Home() {
-  const recommendations = getRecommendedBooks(1);
   const [userRatings, setUserRatings] = useState<Record<number, number>>({});
   const [hoveredStars, setHoveredStars] = useState<Record<number, number>>({});
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["home-recommendations"],
+    queryFn: () => listBooks({ page: 1, pageSize: 6, minRating: 0 }),
+  });
+  const recommendations = (data?.items ?? []).map((book, index) => ({
+    book,
+    reason: RECOMMENDATION_REASONS[index % RECOMMENDATION_REASONS.length],
+  }));
 
   const handleRating = (bookId: number, rating: number, e: React.MouseEvent) => {
     e.preventDefault();
@@ -31,6 +48,12 @@ export function Home() {
 
       {/* Recommendations Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {isLoading && <p className="text-slate-600">Loading recommendations...</p>}
+        {isError && (
+          <p className="text-red-600">
+            Failed to load recommendations from backend. Make sure backend is running.
+          </p>
+        )}
         {recommendations.map(({ book, reason }) => (
           <Link
             key={book.id}
