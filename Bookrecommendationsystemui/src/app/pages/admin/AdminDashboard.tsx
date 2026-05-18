@@ -1,8 +1,9 @@
 import React, { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Star, TrendingUp, BarChart3 } from "lucide-react";
-import { books as initialBooks, Book, topRatedBooksData } from "../../data/mockData";
+import type { Book } from "../../lib/booksApi";
 import { Button } from "../../components/ui/button";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   Table,
   TableBody,
@@ -21,11 +22,30 @@ import {
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "../../components/ui/pagination";
+import {
+  createAdminBook,
+  deleteAdminBook,
+  listAdminBooks,
+  listAdminTopRatedBooks,
+  updateAdminBook,
+} from "../../lib/adminApi";
 
 export function AdminDashboard() {
-  const [books, setBooks] = useState<Book[]>(initialBooks);
+  const queryClient = useQueryClient();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const pageSize = 25;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -37,6 +57,84 @@ export function AdminDashboard() {
     pageCount: "",
     isbn: "",
     coverUrl: ""
+  });
+  const {
+    data: booksPage,
+    isLoading: isBooksLoading,
+    isError: isBooksError,
+  } = useQuery({
+    queryKey: ["admin-books", currentPage, searchQuery],
+    queryFn: () =>
+      listAdminBooks({
+        page: currentPage,
+        pageSize,
+        q: searchQuery.trim() || undefined,
+      }),
+    placeholderData: (previousData) => previousData,
+  });
+  const books = booksPage?.items ?? [];
+  const totalBooks = booksPage?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalBooks / pageSize));
+  const pageStart = Math.max(1, currentPage - 2);
+  const pageEnd = Math.min(totalPages, pageStart + 4);
+  const pageNumbers = Array.from({ length: pageEnd - pageStart + 1 }, (_, index) => pageStart + index);
+  const { data: topRatedBooksData = [] } = useQuery({
+    queryKey: ["admin-top-rated-books"],
+    queryFn: () => listAdminTopRatedBooks(10),
+  });
+
+  const resetForm = () => {
+    setFormData({
+      title: "",
+      author: "",
+      genre: "",
+      rating: "",
+      description: "",
+      yearPublished: "",
+      pageCount: "",
+      isbn: "",
+      coverUrl: "",
+    });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: createAdminBook,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-books"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-top-rated-books"] });
+      setIsDialogOpen(false);
+      resetForm();
+      setErrorMessage(null);
+    },
+    onError: (error: unknown) => {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to create book");
+    },
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Parameters<typeof updateAdminBook>[1] }) =>
+      updateAdminBook(id, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-books"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-top-rated-books"] });
+      setIsDialogOpen(false);
+      setEditingBook(null);
+      resetForm();
+      setErrorMessage(null);
+    },
+    onError: (error: unknown) => {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to update book");
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: deleteAdminBook,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-books"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-top-rated-books"] });
+      setErrorMessage(null);
+    },
+    onError: (error: unknown) => {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to delete book");
+    },
   });
 
   const handleEdit = (book: Book) => {
@@ -57,71 +155,34 @@ export function AdminDashboard() {
 
   const handleDelete = (id: number) => {
     if (confirm("Are you sure you want to delete this book?")) {
-      setBooks(books.filter(b => b.id !== id));
+      deleteMutation.mutate(id);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const payload = {
+      title: formData.title,
+      author: formData.author,
+      genre: formData.genre,
+      rating: Number(formData.rating),
+      description: formData.description,
+      year_published: Number(formData.yearPublished),
+      page_count: Number(formData.pageCount),
+      isbn: formData.isbn,
+      cover_url: formData.coverUrl || "https://via.placeholder.com/300x450?text=Book",
+    };
 
     if (editingBook) {
-      // Update existing book
-      setBooks(books.map(b =>
-        b.id === editingBook.id
-          ? {
-            ...b,
-            ...formData,
-            rating: parseFloat(formData.rating),
-            yearPublished: parseInt(formData.yearPublished),
-            pageCount: parseInt(formData.pageCount)
-          }
-          : b
-      ));
+      updateMutation.mutate({ id: editingBook.id, payload });
     } else {
-      // Add new book
-      const newBook: Book = {
-        id: Math.max(...books.map(b => b.id)) + 1,
-        title: formData.title,
-        author: formData.author,
-        genre: formData.genre,
-        rating: parseFloat(formData.rating),
-        description: formData.description,
-        yearPublished: parseInt(formData.yearPublished),
-        pageCount: parseInt(formData.pageCount),
-        isbn: formData.isbn,
-        coverUrl: formData.coverUrl || "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400"
-      };
-      setBooks([...books, newBook]);
+      createMutation.mutate(payload);
     }
-
-    setIsDialogOpen(false);
-    setEditingBook(null);
-    setFormData({
-      title: "",
-      author: "",
-      genre: "",
-      rating: "",
-      description: "",
-      yearPublished: "",
-      pageCount: "",
-      isbn: "",
-      coverUrl: ""
-    });
   };
 
   const openNewBookDialog = () => {
     setEditingBook(null);
-    setFormData({
-      title: "",
-      author: "",
-      genre: "",
-      rating: "",
-      description: "",
-      yearPublished: "",
-      pageCount: "",
-      isbn: "",
-      coverUrl: ""
-    });
+    resetForm();
     setIsDialogOpen(true);
   };
 
@@ -279,17 +340,22 @@ export function AdminDashboard() {
           </DialogContent>
         </Dialog>
       </div>
+      {errorMessage && (
+        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {errorMessage}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
           <p className="text-sm text-slate-600 mb-1">Total Books</p>
-          <p className="text-3xl font-semibold text-slate-800">{books.length}</p>
+          <p className="text-3xl font-semibold text-slate-800">{totalBooks}</p>
         </div>
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <p className="text-sm text-slate-600 mb-1">Avg Rating</p>
+          <p className="text-sm text-slate-600 mb-1">Avg Rating (Current Page)</p>
           <p className="text-3xl font-semibold text-slate-800">
-            {(books.reduce((sum, b) => sum + b.rating, 0) / books.length).toFixed(1)}
+            {books.length > 0 ? (books.reduce((sum, b) => sum + b.rating, 0) / books.length).toFixed(1) : "0.0"}
           </p>
         </div>
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -302,43 +368,55 @@ export function AdminDashboard() {
 
       {/* Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        {/* Top 10 Most Rated Books */}
+        {/* Popularity vs Quality */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-slate-800">Top 10 Most Rated Books</h3>
-              <p className="text-sm text-slate-600">Books with most user ratings</p>
+              <h3 className="font-semibold text-slate-800">Popularity vs Rating</h3>
+              <p className="text-sm text-slate-600">Ratings count against average rating</p>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={350}>
-            <BarChart data={topRatedBooksData} layout="horizontal">
+          <div className="mt-2">
+            <ResponsiveContainer width="100%" height={340}>
+              <ScatterChart
+                margin={{ top: 12, right: 16, left: 16, bottom: 8 }}
+              >
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis type="number" stroke="#64748b" />
+                <XAxis
+                  type="number"
+                  dataKey="ratingsCount"
+                  name="Ratings Count"
+                  stroke="#64748b"
+                />
               <YAxis
-                type="category"
-                dataKey="title"
-                stroke="#64748b"
-                width={120}
-                fontSize={12}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "white",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "8px"
-                }}
-              />
-              <Bar
-                dataKey="ratings"
-                fill="#8b5cf6"
-                radius={[0, 8, 8, 0]}
-                name="Number of Ratings"
-              />
-            </BarChart>
-          </ResponsiveContainer>
+                  type="number"
+                  dataKey="avgRating"
+                  name="Average Rating"
+                  domain={[0, 5]}
+                  stroke="#64748b"
+                />
+                <Tooltip
+                  cursor={{ strokeDasharray: "3 3" }}
+                  formatter={(value: number, name: string) => [
+                    typeof value === "number" ? value.toFixed(2) : value,
+                    name,
+                  ]}
+                  labelFormatter={(_, payload) =>
+                    payload && payload[0] ? String(payload[0].payload.title) : ""
+                  }
+                  contentStyle={{
+                    backgroundColor: "white",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Scatter data={topRatedBooksData} fill="#8b5cf6" />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Average Rating per Book */}
@@ -365,11 +443,11 @@ export function AdminDashboard() {
                   <div className="flex items-center gap-1">
                     <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
                     <span className="text-lg font-semibold text-slate-800">
-                      {book.avgRating}
+                        {book.avgRating.toFixed(2)}
                     </span>
                   </div>
                   <span className="text-xs text-slate-500">
-                    {book.ratings} ratings
+                      {book.ratingsCount} ratings
                   </span>
                 </div>
               </div>
@@ -380,6 +458,20 @@ export function AdminDashboard() {
 
       {/* Books Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between gap-4">
+          <Input
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Search title or author..."
+            className="max-w-md"
+          />
+          <p className="text-sm text-slate-600">
+            Page {currentPage} of {totalPages}
+          </p>
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
@@ -392,6 +484,20 @@ export function AdminDashboard() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {isBooksLoading && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-slate-500">
+                  Loading books...
+                </TableCell>
+              </TableRow>
+            )}
+            {isBooksError && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-red-600">
+                  Failed to load books from backend.
+                </TableCell>
+              </TableRow>
+            )}
             {books.map(book => (
               <TableRow key={book.id}>
                 <TableCell className="font-medium">{book.title}</TableCell>
@@ -432,6 +538,48 @@ export function AdminDashboard() {
             ))}
           </TableBody>
         </Table>
+        {!isBooksError && totalBooks > 0 && (
+          <div className="p-4 border-t border-slate-200">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setCurrentPage((page) => Math.max(1, page - 1));
+                    }}
+                    className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+                {pageNumbers.map((page) => (
+                  <PaginationItem key={page}>
+                    <PaginationLink
+                      href="#"
+                      isActive={page === currentPage}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage(page);
+                      }}
+                    >
+                      {page}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setCurrentPage((page) => Math.min(totalPages, page + 1));
+                    }}
+                    className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </div>
     </div>
   );

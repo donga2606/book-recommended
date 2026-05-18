@@ -97,6 +97,7 @@ export function DataScientistDashboard() {
     experiments
       .filter((experiment) => experiment.id !== activeExperiment?.id)
       .reduce((best, current) => (current.rmse < best.rmse ? current : best), experiments[0] ?? activeExperiment);
+  const bestCandidateStatus = bestCandidate?.status?.toLowerCase() ?? "";
 
   const trainMutation = useMutation({
     mutationFn: trainSVD,
@@ -533,8 +534,16 @@ export function DataScientistDashboard() {
             <div className="border border-slate-200 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm text-slate-500">Best Candidate</span>
-                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-medium">
-                  Testing
+                <span
+                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    bestCandidateStatus === "testing"
+                      ? "bg-blue-100 text-blue-700"
+                      : bestCandidateStatus === "active"
+                      ? "bg-green-100 text-green-700"
+                      : "bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  {bestCandidate?.status ?? "Unknown"}
                 </span>
               </div>
               <p className="font-semibold text-slate-800 mb-2">
@@ -550,7 +559,7 @@ export function DataScientistDashboard() {
                 <div>
                   <p className="text-slate-500">RMSE</p>
                   <p className="text-green-600 font-medium">
-                    {bestCandidate ? `${bestCandidate.rmse.toFixed(3)} ↓` : "-"}
+                    {bestCandidate ? bestCandidate.rmse.toFixed(3) : "-"}
                   </p>
                 </div>
               </div>
