@@ -88,6 +88,23 @@ export interface MLModelMetrics {
   training_duration: string;
 }
 
+export interface MLUserActivity {
+  month: string;
+  users: number;
+  active_readers: number;
+}
+
+export interface MLPopularBook {
+  title: string;
+  reads: number;
+}
+
+export interface MLProductKpis {
+  engagement_rate: number;
+  avg_session_minutes: number;
+  click_through_rate: number;
+}
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const token = await getDataScientistToken();
   return { Authorization: `Bearer ${token}` };
@@ -116,5 +133,23 @@ export async function getModelExperiments(): Promise<MLExperiment[]> {
 export async function getModelMetrics(): Promise<MLModelMetrics> {
   const headers = await getAuthHeaders();
   const response = await apiClient.get<MLModelMetrics>("/ml/metrics", { headers });
+  return response.data;
+}
+
+export async function getUserActivity(): Promise<MLUserActivity[]> {
+  const headers = await getAuthHeaders();
+  const response = await apiClient.get<MLUserActivity[]>("/analytics/user-activity", { headers });
+  return response.data;
+}
+
+export async function getPopularBooks(): Promise<MLPopularBook[]> {
+  const headers = await getAuthHeaders();
+  const response = await apiClient.get<MLPopularBook[]>("/analytics/popular-books", { headers });
+  return response.data;
+}
+
+export async function getProductKpis(): Promise<MLProductKpis> {
+  const headers = await getAuthHeaders();
+  const response = await apiClient.get<MLProductKpis>("/analytics/product-kpis", { headers });
   return response.data;
 }

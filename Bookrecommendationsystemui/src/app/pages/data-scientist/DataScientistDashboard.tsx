@@ -32,8 +32,15 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import { popularBooksData, userActivityData } from "../../data/mockData";
-import { getModelExperiments, getModelMetrics, getModelOverview, trainSVD } from "../../lib/mlApi";
+import {
+  getModelExperiments,
+  getModelMetrics,
+  getModelOverview,
+  getPopularBooks,
+  getProductKpis,
+  getUserActivity,
+  trainSVD
+} from "../../lib/mlApi";
 
 export function DataScientistDashboard() {
   const queryClient = useQueryClient();
@@ -90,6 +97,35 @@ export function DataScientistDashboard() {
     queryKey: ["ml-metrics"],
     queryFn: getModelMetrics,
   });
+  const {
+    data: userActivity = [],
+    isLoading: isUserActivityLoading,
+    isError: isUserActivityError,
+  } = useQuery({
+    queryKey: ["analytics-user-activity"],
+    queryFn: getUserActivity,
+  });
+  const {
+    data: popularBooks = [],
+    isLoading: isPopularBooksLoading,
+    isError: isPopularBooksError,
+  } = useQuery({
+    queryKey: ["analytics-popular-books"],
+    queryFn: getPopularBooks,
+  });
+  const {
+    data: productKpis,
+    isLoading: isProductKpisLoading,
+    isError: isProductKpisError,
+  } = useQuery({
+    queryKey: ["analytics-product-kpis"],
+    queryFn: getProductKpis,
+  });
+  const userActivityChartData = userActivity.map((entry) => ({
+    month: entry.month,
+    users: entry.users,
+    activeReaders: entry.active_readers,
+  }));
 
   const activeExperiment =
     experiments.find((experiment) => experiment.status.toLowerCase() === "active") ?? experiments[0];
@@ -614,7 +650,7 @@ export function DataScientistDashboard() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={userActivityData}>
+            <LineChart data={userActivityChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="month" stroke="#64748b" />
               <YAxis stroke="#64748b" />
@@ -642,6 +678,8 @@ export function DataScientistDashboard() {
               />
             </LineChart>
           </ResponsiveContainer>
+          {isUserActivityLoading && <p className="text-xs text-slate-500 mt-3">Loading user activity...</p>}
+          {isUserActivityError && <p className="text-xs text-red-600 mt-3">Failed to load user activity data.</p>}
         </div>
 
         {/* Popular Books Chart */}
@@ -656,7 +694,7 @@ export function DataScientistDashboard() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={popularBooksData}>
+            <BarChart data={popularBooks}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis
                 dataKey="title"
@@ -682,6 +720,8 @@ export function DataScientistDashboard() {
               />
             </BarChart>
           </ResponsiveContainer>
+          {isPopularBooksLoading && <p className="text-xs text-slate-500 mt-3">Loading popular books...</p>}
+          {isPopularBooksError && <p className="text-xs text-red-600 mt-3">Failed to load popular books data.</p>}
         </div>
       </div>
 
@@ -692,8 +732,12 @@ export function DataScientistDashboard() {
             <TrendingUp className="w-6 h-6 text-purple-600" />
           </div>
           <h3 className="font-semibold text-slate-800 mb-2">Engagement Rate</h3>
-          <p className="text-3xl font-semibold text-slate-800 mb-1">87.3%</p>
-          <p className="text-sm text-green-600">↑ 12.5% from last month</p>
+          <p className="text-3xl font-semibold text-slate-800 mb-1">
+            {isProductKpisLoading ? "..." : `${(productKpis?.engagement_rate ?? 0).toFixed(1)}%`}
+          </p>
+          <p className="text-sm text-slate-600">
+            {isProductKpisError ? "Failed to load KPI data" : "From analytics API"}
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -701,8 +745,12 @@ export function DataScientistDashboard() {
             <Activity className="w-6 h-6 text-blue-600" />
           </div>
           <h3 className="font-semibold text-slate-800 mb-2">Avg. Session Time</h3>
-          <p className="text-3xl font-semibold text-slate-800 mb-1">24 min</p>
-          <p className="text-sm text-green-600">↑ 8.2% from last month</p>
+          <p className="text-3xl font-semibold text-slate-800 mb-1">
+            {isProductKpisLoading ? "..." : `${(productKpis?.avg_session_minutes ?? 0).toFixed(1)} min`}
+          </p>
+          <p className="text-sm text-slate-600">
+            {isProductKpisError ? "Failed to load KPI data" : "From analytics API"}
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -710,8 +758,12 @@ export function DataScientistDashboard() {
             <CheckCircle2 className="w-6 h-6 text-pink-600" />
           </div>
           <h3 className="font-semibold text-slate-800 mb-2">Click-Through Rate</h3>
-          <p className="text-3xl font-semibold text-slate-800 mb-1">42.1%</p>
-          <p className="text-sm text-green-600">↑ 5.7% from last month</p>
+          <p className="text-3xl font-semibold text-slate-800 mb-1">
+            {isProductKpisLoading ? "..." : `${(productKpis?.click_through_rate ?? 0).toFixed(1)}%`}
+          </p>
+          <p className="text-sm text-slate-600">
+            {isProductKpisError ? "Failed to load KPI data" : "From analytics API"}
+          </p>
         </div>
       </div>
     </div>
