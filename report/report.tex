@@ -97,7 +97,7 @@ The project goals are:
 \end{itemize}
 
 \section{Scope and Limitations}
-The system uses the Book-Crossing CSV dumps for seeding and offline training. Inference relies on an \emph{item-centric} saved model (book biases and factors) with online estimation of user profiles from a small number of in-app ratings. Users without ratings receive fallback recommendations based on genre preferences or popularity. Analytics KPIs on the data scientist dashboard include seeded demonstration data for engagement trends.
+The system uses the Book-Crossing CSV dumps for seeding and offline training. Inference relies on an \emph{item-centric} saved model (book biases and factors) with online estimation of user profiles from a small number of in-app ratings. When SVD recommendations are unavailable (for example, no user ratings), the API falls back to seeded recommendation rows when available, then to preference/popularity ranking. Analytics KPIs on the data scientist dashboard include seeded demonstration data for engagement trends.
 
 \section{Report Structure}
 The remainder of this report is organized as follows:
@@ -122,7 +122,10 @@ Table~\ref{tab:stakeholders} summarizes the primary stakeholders, their roles in
 \centering
 \caption{Project stakeholders and system touchpoints}
 \label{tab:stakeholders}
-\begin{tabular}{@{}p{3.0cm}p{3.8cm}p{6.0cm}@{}}
+\begingroup
+\renewcommand{\arraystretch}{1.25}
+\setlength{\tabcolsep}{8pt}
+\begin{tabular}{@{}p{3.2cm}p{4.2cm}p{6.6cm}@{}}
 \toprule
 \textbf{Stakeholder} & \textbf{Role} & \textbf{Touchpoints} \\
 \midrule
@@ -138,16 +141,14 @@ Data Scientist dashboard (\texttt{/data-scientist}), \texttt{/api/v1/ml/*} \\
 Developers / maintainers &
 Implement APIs, database, ML pipeline &
 \texttt{backend/app/}, \texttt{Bookrecommendationsystemui/} \\
-Course evaluators / institution &
-Assess design, methodology, and results &
-This report, live demonstration \\
 \bottomrule
 \end{tabular}
+\endgroup
 \end{table}
 
 \section{Benefits by Stakeholder}
 
-\textbf{End users} benefit from personalized recommendations displayed on the home page, including a human-readable \texttt{reason} and a \texttt{predicted\_rating} score. Rating books improves future recommendations through online user profile estimation. Search and filters reduce discovery time; the reading list tracks planned, active, and completed books.
+\textbf{End users} benefit from personalized recommendations displayed on the home page, including a human-readable \texttt{reason} and a \texttt{predicted\_rating} score. Rating books improves future recommendations through online user profile estimation. Search and filters reduce discovery time; the reading list tracks planned, reading, and completed books.
 
 \textbf{Administrators} maintain catalog quality via create/update/delete book operations and can monitor top-rated titles aggregated from the dataset. This supports content curation for a library or retail scenario.
 
@@ -159,7 +160,7 @@ This report, live demonstration \\
 \begin{enumerate}
     \item \textbf{UC1 --- Get recommendations:} User logs in $\rightarrow$ \texttt{GET /users/me/recommendations} $\rightarrow$ SVD scores unrated books or fallback applies.
     \item \textbf{UC2 --- Rate a book:} User submits stars $\rightarrow$ \texttt{PUT /users/me/ratings/\{book\_id\}} $\rightarrow$ subsequent recommendations use updated profile.
-    \item \textbf{UC3 --- Admin catalog:} Admin creates or edits a book $\rightarrow$ \texttt{POST/PATCH /admin/books}.
+    \item \textbf{UC3 --- Admin catalog:} Admin creates a book via \texttt{POST /admin/books} or edits one via \texttt{PATCH /admin/books/\{book\_id\}}.
     \item \textbf{UC4 --- Train model:} Data scientist triggers \texttt{POST /ml/train} with hyperparameters $\rightarrow$ artifact saved to \texttt{dataset/svd\_model\_latest}.
 \end{enumerate}
 
@@ -544,12 +545,64 @@ For user \texttt{alex.johnson@example.com} with seeded ratings on three books, t
 The Figma-derived UI implements a consistent card-based design (purple accents, rounded corners). Key surfaces include:
 \begin{itemize}
     \item \textbf{Home} --- 3-column recommendation grid with cover, rating, genre, and explanation panel.
+\end{itemize}
+
+Figure~\ref{fig:ui-home-recommendations} illustrates the Home recommendation interface. The cards display predicted ratings, genres, and explanation text for each recommendation, providing direct evidence that backend recommendation outputs are integrated and rendered in the frontend UI.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{images/recommendation_page.png}
+\caption{Personalized recommendation interface displaying predicted ratings and recommendation explanations.}
+\label{fig:ui-home-recommendations}
+\end{figure}
+
+\begin{itemize}
     \item \textbf{Search} --- genre and minimum-rating filters with paginated results.
+\end{itemize}
+
+Figure~\ref{fig:ui-search-page} shows the Search interface with query input, genre/rating filters, and paginated book cards for large-catalog exploration.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{images/search_book_page.png}
+\caption{Search page interface with keyword search, genre/rating filters, and paginated catalog results.}
+\label{fig:ui-search-page}
+\end{figure}
+
+\begin{itemize}
     \item \textbf{Book Detail} --- metadata, star display, reading-list actions.
     \item \textbf{Profile} --- avatar, preferences, reading history.
     \item \textbf{Admin Dashboard} --- book table with CRUD modals; top-rated chart.
-    \item \textbf{Data Scientist Dashboard} --- model overview, metrics cards (RMSE, accuracy, precision, recall, F1), experiment table, and training dialog wired to \texttt{POST /ml/train}.
 \end{itemize}
+
+Figure~\ref{fig:ui-admin-dashboard} presents the Admin Dashboard analytics area, including the popularity-vs-rating scatter view and per-book rating summaries used to monitor catalog quality.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{images/admin_dashboard.png}
+\caption{Admin dashboard analytics view showing popularity-versus-rating trends and average rating summaries by book.}
+\label{fig:ui-admin-dashboard}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{Data Scientist Dashboard} --- model overview, Train/Test RMSE cards, experiment table with activate/remove actions, and training dialog wired to \texttt{POST /ml/train}.
+\end{itemize}
+
+Figure~\ref{fig:ui-ds-metrics-versioning} highlights the Data Scientist Dashboard cards for train/test RMSE and model versioning status, while Figure~\ref{fig:ui-ds-experiments} shows the experimentation table used to compare, activate, and remove model runs.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{images/evaluation_metrics.png}
+\caption{Data Scientist Dashboard cards showing train/test evaluation metrics and production model versioning status.}
+\label{fig:ui-ds-metrics-versioning}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{images/model_experimentation.png}
+\caption{Model experimentation table with RMSE tracking and actions to set an active model or remove archived experiments.}
+\label{fig:ui-ds-experiments}
+\end{figure}
 
 \section{Conclusion}
 
@@ -583,8 +636,11 @@ POST & \texttt{/auth/login} & Public \\
 GET & \texttt{/books} & Public \\
 GET & \texttt{/users/me/recommendations} & User \\
 PUT & \texttt{/users/me/ratings/\{book\_id\}} & User \\
-GET/POST/PATCH/DELETE & \texttt{/admin/books} & Admin \\
+GET/POST & \texttt{/admin/books} & Admin \\
+PATCH/DELETE & \texttt{/admin/books/\{book\_id\}} & Admin \\
 POST & \texttt{/ml/train} & Data scientist \\
+POST & \texttt{/ml/experiments/\{experiment\_id\}/activate} & Data scientist \\
+DELETE & \texttt{/ml/experiments/\{experiment\_id\}} & Data scientist \\
 GET & \texttt{/ml/metrics} & Data scientist \\
 GET & \texttt{/analytics/user-activity} & Data scientist \\
 \bottomrule

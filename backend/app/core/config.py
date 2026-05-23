@@ -1,6 +1,9 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DB_PATH = Path(__file__).resolve().parents[2] / "backend.db"
 
 
 class Settings(BaseSettings):
@@ -8,7 +11,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
 
-    database_url: str = "sqlite:///./backend.db"
+    database_url: str = f"sqlite:///{BACKEND_DB_PATH.as_posix()}"
 
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
