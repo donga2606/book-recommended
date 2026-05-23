@@ -3,7 +3,7 @@ from itertools import product
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_role
@@ -58,6 +58,14 @@ def _upsert_metrics(db: Session, metrics: SVDEvaluation) -> None:
 
 
 def _log_experiment(db: Session, params: SVDHyperParams, rmse: float, status_label: str = "active") -> None:
+    if status_label == "active":
+        # Ensure there is only one active experiment at any time.
+        db.execute(
+            update(ModelExperiment)
+            .where(ModelExperiment.status == "active")
+            .values(status="archived")
+        )
+
     db.add(
         ModelExperiment(
             version=(
@@ -96,6 +104,45 @@ def list_experiments(
 ) -> list[ModelExperimentOut]:
     rows = db.scalars(select(ModelExperiment).order_by(desc(ModelExperiment.id))).all()
     return [ModelExperimentOut.model_validate(row) for row in rows]
+
+
+@router.post("/experiments/{experiment_id}/activate", response_model=ModelExperimentOut)
+def activate_experiment(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_role(RoleEnum.data_scientist)),
+) -> ModelExperimentOut:
+    target = db.get(ModelExperiment, experiment_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Model experiment not found")
+
+    db.execute(
+        update(ModelExperiment)
+        .where(ModelExperiment.status == "active")
+        .where(ModelExperiment.id != experiment_id)
+        .values(status="archived")
+    )
+    target.status = "active"
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    return ModelExperimentOut.model_validate(target)
+
+
+@router.delete("/experiments/{experiment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_experiment(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_role(RoleEnum.data_scientist)),
+) -> None:
+    target = db.get(ModelExperiment, experiment_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Model experiment not found")
+    if target.status.lower() == "active":
+        raise HTTPException(status_code=400, detail="Active experiment cannot be removed")
+
+    db.delete(target)
+    db.commit()
 
 
 @router.get("/metrics", response_model=ModelMetricsOut)

@@ -130,6 +130,17 @@ export async function getModelExperiments(): Promise<MLExperiment[]> {
   return response.data;
 }
 
+export async function activateModelExperiment(experimentId: number): Promise<MLExperiment> {
+  const headers = await getAuthHeaders();
+  const response = await apiClient.post<MLExperiment>(`/ml/experiments/${experimentId}/activate`, undefined, { headers });
+  return response.data;
+}
+
+export async function removeModelExperiment(experimentId: number): Promise<void> {
+  const headers = await getAuthHeaders();
+  await apiClient.delete(`/ml/experiments/${experimentId}`, { headers });
+}
+
 export async function getModelMetrics(): Promise<MLModelMetrics> {
   const headers = await getAuthHeaders();
   const response = await apiClient.get<MLModelMetrics>("/ml/metrics", { headers });

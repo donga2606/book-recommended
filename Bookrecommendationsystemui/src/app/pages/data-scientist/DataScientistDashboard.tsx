@@ -33,12 +33,14 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import {
+  activateModelExperiment,
   getModelExperiments,
   getModelMetrics,
   getModelOverview,
   getPopularBooks,
   getProductKpis,
   getUserActivity,
+  removeModelExperiment,
   trainSVD
 } from "../../lib/mlApi";
 
@@ -154,6 +156,31 @@ export function DataScientistDashboard() {
     },
   });
 
+  const activateExperimentMutation = useMutation({
+    mutationFn: (experimentId: number) => activateModelExperiment(experimentId),
+    onSuccess: (data) => {
+      setTrainMessage(`Model activated: ${data.version}`);
+      queryClient.invalidateQueries({ queryKey: ["ml-experiments"] });
+      queryClient.invalidateQueries({ queryKey: ["ml-metrics"] });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Unknown activation error";
+      setTrainMessage(`Activation failed: ${message}`);
+    },
+  });
+
+  const removeExperimentMutation = useMutation({
+    mutationFn: (experimentId: number) => removeModelExperiment(experimentId),
+    onSuccess: () => {
+      setTrainMessage("Experiment removed.");
+      queryClient.invalidateQueries({ queryKey: ["ml-experiments"] });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Unknown remove error";
+      setTrainMessage(`Remove failed: ${message}`);
+    },
+  });
+
   const handleRetrainModel = () => {
     setIsTraining(true);
     setTrainMessage(null);
@@ -248,7 +275,7 @@ export function DataScientistDashboard() {
             <DialogTrigger asChild>
               <Button
                 disabled={isTraining}
-                className="bg-purple-600 hover:bg-purple-700 rounded-xl"
+                className="bg-purple-600 hover:bg-purple-700 rounded-xl cursor-pointer"
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${isTraining ? "animate-spin" : ""}`} />
                 {isTraining ? "Training..." : "Train SVD"}
@@ -445,26 +472,27 @@ export function DataScientistDashboard() {
                 <TableHead>RMSE</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isExperimentsLoading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-slate-500">
+                  <TableCell colSpan={6} className="text-center text-slate-500">
                     Loading experiments...
                   </TableCell>
                 </TableRow>
               )}
               {isExperimentsError && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-red-600">
+                  <TableCell colSpan={6} className="text-center text-red-600">
                     Failed to load experiments from backend.
                   </TableCell>
                 </TableRow>
               )}
               {!isExperimentsLoading && !isExperimentsError && experiments.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-slate-500">
+                  <TableCell colSpan={6} className="text-center text-slate-500">
                     No experiments yet.
                   </TableCell>
                 </TableRow>
@@ -490,6 +518,43 @@ export function DataScientistDashboard() {
                       </span>
                     ) : (
                       <span className="text-slate-500 text-xs">{exp.status}</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {exp.status.toLowerCase() === "active" ? (
+                      <span className="text-xs text-slate-500">In use</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 cursor-pointer"
+                          disabled={activateExperimentMutation.isPending || removeExperimentMutation.isPending}
+                          onClick={() => {
+                            setTrainMessage(null);
+                            activateExperimentMutation.mutate(exp.id);
+                          }}
+                        >
+                          {activateExperimentMutation.isPending ? "Applying..." : "Set Active"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 cursor-pointer text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                          disabled={activateExperimentMutation.isPending || removeExperimentMutation.isPending}
+                          onClick={() => {
+                            if (!window.confirm("Remove this model experiment?")) {
+                              return;
+                            }
+                            setTrainMessage(null);
+                            removeExperimentMutation.mutate(exp.id);
+                          }}
+                        >
+                          {removeExperimentMutation.isPending ? "Removing..." : "Remove"}
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
