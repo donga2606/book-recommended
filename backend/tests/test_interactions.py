@@ -10,6 +10,17 @@ def test_upsert_rating(client, user_token):
     assert payload["stars"] == 4
 
 
+def test_list_ratings(client, user_token):
+    response = client.get(
+        "/api/v1/users/me/ratings",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, list)
+    assert any(item["book_id"] == 2 for item in payload)
+
+
 def test_reading_list_status_update(client, user_token):
     create_response = client.post(
         "/api/v1/users/me/reading-list",

@@ -143,6 +143,17 @@ def upsert_rating(
     return UserRatingOut(book_id=rating.book_id, stars=rating.stars, updated_at=rating.updated_at)
 
 
+@router.get("/ratings", response_model=list[UserRatingOut])
+def list_ratings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[UserRatingOut]:
+    rows = db.scalars(
+        select(UserRating).where(UserRating.user_id == current_user.id).order_by(UserRating.updated_at.desc())
+    ).all()
+    return [UserRatingOut(book_id=row.book_id, stars=row.stars, updated_at=row.updated_at) for row in rows]
+
+
 @router.post("/reading-list", response_model=ReadingListOut, status_code=status.HTTP_201_CREATED)
 def create_reading_list_item(
     payload: ReadingListCreate,

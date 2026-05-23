@@ -79,8 +79,12 @@ def model_overview(_: User = Depends(require_role(RoleEnum.data_scientist))) -> 
         input_features=["User ID", "Book ID", "Rating"],
         technique="Matrix Factorization",
         description=(
-            "Collaborative filtering model using matrix factorization to predict "
-            "user ratings based on historical interactions."
+            "We train an SVD-based collaborative filtering model on historical user-book ratings. "
+            "The model learns latent vectors for users and books, then predicts preference by "
+            "computing how strongly those latent factors align (dot-product style scoring). "
+            "This captures hidden taste patterns (for example, pacing or writing style) beyond "
+            "explicit genres, but requires enough interaction history and is less accurate for "
+            "cold-start users/items."
         ),
     )
 

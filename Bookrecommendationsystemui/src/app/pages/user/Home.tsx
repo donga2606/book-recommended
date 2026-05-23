@@ -1,21 +1,46 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { Star, Sparkles } from "lucide-react";
 import { listRecommendedBooks } from "../../lib/booksApi";
+import { listMyRatings, upsertUserRating } from "../../lib/userApi";
 
 export function Home() {
+  const queryClient = useQueryClient();
   const [userRatings, setUserRatings] = useState<Record<number, number>>({});
   const [hoveredStars, setHoveredStars] = useState<Record<number, number>>({});
   const { data: recommendations = [], isLoading, isError } = useQuery({
     queryKey: ["home-recommendations"],
     queryFn: () => listRecommendedBooks(6),
   });
+  const { data: persistedRatings = [] } = useQuery({
+    queryKey: ["my-ratings"],
+    queryFn: listMyRatings,
+  });
+  const persistedRatingsMap = persistedRatings.reduce<Record<number, number>>((accumulator, item) => {
+    accumulator[item.bookId] = item.stars;
+    return accumulator;
+  }, {});
+  const ratingMutation = useMutation({
+    mutationFn: ({ bookId, stars }: { bookId: number; stars: number }) => upsertUserRating(bookId, stars),
+    onSuccess: async (savedRating) => {
+      queryClient.setQueryData(
+        ["my-ratings"],
+        (previous: Array<{ bookId: number; stars: number; updatedAt: string }> | undefined) => {
+          const list = previous ?? [];
+          const withoutBook = list.filter((item) => item.bookId !== savedRating.bookId);
+          return [savedRating, ...withoutBook];
+        }
+      );
+      await queryClient.invalidateQueries({ queryKey: ["home-recommendations"] });
+    },
+  });
 
   const handleRating = (bookId: number, rating: number, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setUserRatings({ ...userRatings, [bookId]: rating });
+    setUserRatings((previous) => ({ ...previous, [bookId]: rating }));
+    ratingMutation.mutate({ bookId, stars: rating });
   };
 
   return (
@@ -39,6 +64,11 @@ export function Home() {
         {isError && (
           <p className="text-red-600">
             Failed to load recommendations from backend. Make sure backend is running.
+          </p>
+        )}
+        {ratingMutation.isError && (
+          <p className="text-red-600">
+            Failed to save your rating. Please try again.
           </p>
         )}
         {recommendations.map(({ book, reason, predictedRating }) => (
@@ -84,16 +114,17 @@ export function Home() {
                     <button
                       key={star}
                       onClick={(e) => handleRating(book.id, star, e)}
+                      disabled={ratingMutation.isPending}
                       onMouseEnter={() => setHoveredStars({ ...hoveredStars, [book.id]: star })}
                       onMouseLeave={() => {
                         const newHovered = { ...hoveredStars };
                         delete newHovered[book.id];
                         setHoveredStars(newHovered);
                       }}
-                      className="transition-transform hover:scale-110"
+                      className="transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <Star
-                        className={`w-5 h-5 transition-colors ${star <= (hoveredStars[book.id] || userRatings[book.id] || 0)
+                        className={`w-5 h-5 transition-colors ${star <= (hoveredStars[book.id] || userRatings[book.id] || persistedRatingsMap[book.id] || 0)
                           ? "fill-purple-500 text-purple-500"
                           : "text-slate-300"
                           }`}
