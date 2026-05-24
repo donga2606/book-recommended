@@ -1,25 +1,14 @@
 import axios from "axios";
+import { getBearerAuthHeaders } from "./auth";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+const API_BASE_URL =
+  (import.meta as ImportMeta & { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ??
+  "http://127.0.0.1:8000/api/v1";
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 120000,
 });
-
-let dsTokenCache: string | null = null;
-
-async function getDataScientistToken(): Promise<string> {
-  if (dsTokenCache) {
-    return dsTokenCache;
-  }
-  const response = await apiClient.post<{ access_token: string }>("/auth/login", {
-    email: "datasci@example.com",
-    password: "password123",
-  });
-  dsTokenCache = response.data.access_token;
-  return dsTokenCache;
-}
 
 export interface SVDTrainRequest {
   max_ratings: number;
@@ -106,8 +95,7 @@ export interface MLProductKpis {
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = await getDataScientistToken();
-  return { Authorization: `Bearer ${token}` };
+  return getBearerAuthHeaders();
 }
 
 export async function trainSVD(payload: SVDTrainRequest): Promise<SVDTrainResponse> {

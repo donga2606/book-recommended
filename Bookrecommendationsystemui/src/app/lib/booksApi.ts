@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getBearerAuthHeaders } from "./auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -6,7 +7,6 @@ const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
 });
-let userTokenCache: string | null = null;
 
 interface ApiBook {
   id: number;
@@ -89,18 +89,6 @@ function mapBook(book: ApiBook): Book {
   };
 }
 
-async function getUserToken(): Promise<string> {
-  if (userTokenCache) {
-    return userTokenCache;
-  }
-  const response = await apiClient.post<{ access_token: string }>("/auth/login", {
-    email: "alex.johnson@example.com",
-    password: "password123",
-  });
-  userTokenCache = response.data.access_token;
-  return userTokenCache;
-}
-
 export async function listBooks(params: BooksQueryParams = {}): Promise<PaginatedBooks> {
   const response = await apiClient.get<ApiPaginatedBooks>("/books", {
     params: {
@@ -138,10 +126,10 @@ export async function getSimilarBooks(bookId: number, limit = 4): Promise<Book[]
 }
 
 export async function listRecommendedBooks(limit = 6): Promise<RecommendedBook[]> {
-  const token = await getUserToken();
+  const headers = getBearerAuthHeaders();
   const response = await apiClient.get<ApiRecommendationList>("/users/me/recommendations", {
     params: { limit },
-    headers: { Authorization: `Bearer ${token}` },
+    headers,
   });
   return response.data.items.map((item) => ({
     book: mapBook(item.book),

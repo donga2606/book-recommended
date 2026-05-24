@@ -1,14 +1,27 @@
-import { Outlet, Link, useLocation } from "react-router";
-import { Book, LayoutDashboard, BarChart3, Search, User, Home } from "lucide-react";
+import { Outlet, Link, useLocation, useNavigate } from "react-router";
+import { Book, LayoutDashboard, BarChart3, Search, User, Home, LogOut } from "lucide-react";
 import { cn } from "./ui/utils";
+import { useAuth } from "../context/AuthContext";
+import { Button } from "./ui/button";
 
 export function Layout() {
   const location = useLocation();
-  
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const role = user?.role;
+  const canAccessAdmin = role === "admin";
+  const canAccessDataScientist = role === "data_scientist";
+
   const isActive = (path: string) => location.pathname === path;
   const isAdminActive = location.pathname === "/admin";
   const isDataScientistActive = location.pathname === "/data-scientist";
-  
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <div className="flex h-screen bg-slate-50">
       {/* Sidebar */}
@@ -25,7 +38,7 @@ export function Layout() {
         
         {/* Role Switcher */}
         <div className="p-4 border-b border-slate-200">
-          <p className="text-xs text-slate-500 mb-2">Switch Role</p>
+          <p className="text-xs text-slate-500 mb-2">Workspaces</p>
           <div className="space-y-1">
             <Link
               to="/"
@@ -37,32 +50,36 @@ export function Layout() {
               )}
             >
               <User className="w-4 h-4" />
-              User
+              User Dashboard
             </Link>
-            <Link
-              to="/admin"
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-                isAdminActive
-                  ? "bg-purple-50 text-purple-700"
-                  : "text-slate-600 hover:bg-slate-50"
-              )}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              Admin
-            </Link>
-            <Link
-              to="/data-scientist"
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-                isDataScientistActive
-                  ? "bg-purple-50 text-purple-700"
-                  : "text-slate-600 hover:bg-slate-50"
-              )}
-            >
-              <BarChart3 className="w-4 h-4" />
-              Data Scientist
-            </Link>
+            {canAccessAdmin && (
+              <Link
+                to="/admin"
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+                  isAdminActive
+                    ? "bg-purple-50 text-purple-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                )}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                Admin
+              </Link>
+            )}
+            {canAccessDataScientist && (
+              <Link
+                to="/data-scientist"
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+                  isDataScientistActive
+                    ? "bg-purple-50 text-purple-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                )}
+              >
+                <BarChart3 className="w-4 h-4" />
+                Data Scientist
+              </Link>
+            )}
           </div>
         </div>
         
@@ -117,11 +134,15 @@ export function Layout() {
         <div className="p-4 border-t border-slate-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-400 rounded-full" />
-            <div>
-              <p className="text-sm text-slate-800">Alex Johnson</p>
-              <p className="text-xs text-slate-500">alex@example.com</p>
+            <div className="min-w-0">
+              <p className="text-sm text-slate-800 truncate">{user?.name ?? "Unknown user"}</p>
+              <p className="text-xs text-slate-500 truncate">{user?.email ?? "No email"}</p>
             </div>
           </div>
+          <Button variant="outline" className="w-full mt-3 justify-start" onClick={handleLogout}>
+            <LogOut className="w-4 h-4 mr-2" />
+            Logout
+          </Button>
         </div>
       </aside>
       

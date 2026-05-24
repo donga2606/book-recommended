@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getBearerAuthHeaders } from "./auth";
 
 const API_BASE_URL =
   (import.meta as ImportMeta & { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ??
@@ -8,8 +9,6 @@ const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
 });
-
-let userTokenCache: string | null = null;
 
 interface ApiUserProfile {
   id: number;
@@ -62,23 +61,8 @@ function mapUserProfile(profile: ApiUserProfile): UserProfile {
   };
 }
 
-async function getUserToken(): Promise<string> {
-  if (userTokenCache) {
-    return userTokenCache;
-  }
-
-  const response = await apiClient.post<{ access_token: string }>("/auth/login", {
-    email: "alex.johnson@example.com",
-    password: "password123",
-  });
-
-  userTokenCache = response.data.access_token;
-  return userTokenCache;
-}
-
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = await getUserToken();
-  return { Authorization: `Bearer ${token}` };
+  return getBearerAuthHeaders();
 }
 
 export async function getMyProfile(): Promise<UserProfile> {

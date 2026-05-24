@@ -1,5 +1,6 @@
 import axios from "axios";
 import type { Book } from "./booksApi";
+import { getBearerAuthHeaders } from "./auth";
 
 const API_BASE_URL =
   (import.meta as ImportMeta & { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ??
@@ -9,8 +10,6 @@ const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
 });
-
-let adminTokenCache: string | null = null;
 
 interface ApiBook {
   id: number;
@@ -79,21 +78,8 @@ function mapTopRatedBook(row: ApiTopRatedBook): AdminTopRatedBook {
   };
 }
 
-async function getAdminToken(): Promise<string> {
-  if (adminTokenCache) {
-    return adminTokenCache;
-  }
-  const response = await apiClient.post<{ access_token: string }>("/auth/login", {
-    email: "admin@example.com",
-    password: "password123",
-  });
-  adminTokenCache = response.data.access_token;
-  return adminTokenCache;
-}
-
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = await getAdminToken();
-  return { Authorization: `Bearer ${token}` };
+  return getBearerAuthHeaders();
 }
 
 export async function listAdminBooks(params: { page?: number; pageSize?: number; q?: string }): Promise<AdminBooksPage> {
