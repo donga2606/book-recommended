@@ -23,7 +23,7 @@ export function Home() {
   }, {});
   const ratingMutation = useMutation({
     mutationFn: ({ bookId, stars }: { bookId: number; stars: number }) => upsertUserRating(bookId, stars),
-    onSuccess: async (savedRating) => {
+    onSuccess: (savedRating) => {
       queryClient.setQueryData(
         ["my-ratings"],
         (previous: Array<{ bookId: number; stars: number; updatedAt: string }> | undefined) => {
@@ -32,7 +32,6 @@ export function Home() {
           return [savedRating, ...withoutBook];
         }
       );
-      await queryClient.invalidateQueries({ queryKey: ["home-recommendations"] });
     },
   });
 

@@ -23,10 +23,14 @@ router = APIRouter(prefix="/users/me", tags=["recommendations"])
 MODEL_ARTIFACT_PATH = Path(__file__).resolve().parents[3] / "dataset" / "svd_model_latest"
 
 
-def _fallback_recommendations(db: Session, user: User, limit: int) -> list[RecommendationItem]:
+def _fallback_recommendations(
+    db: Session, user: User, limit: int, rated_book_ids: set[int] | None = None
+) -> list[RecommendationItem]:
     preferences = [value for value in user.preferences.split(",") if value]
     query = select(Book).order_by(Book.rating.desc())
     books = db.scalars(query).all()
+    if rated_book_ids:
+        books = [book for book in books if book.id not in rated_book_ids]
     if preferences:
         books.sort(key=lambda book: (book.genre not in preferences, -book.rating))
     selected = books[:limit]
@@ -88,6 +92,9 @@ def get_recommendations(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RecommendationList:
+    ratings_rows = db.scalars(select(UserRating).where(UserRating.user_id == current_user.id)).all()
+    rated_book_ids = {row.book_id for row in ratings_rows}
+
     svd_items = _svd_recommendations(db, current_user, limit)
     if svd_items:
         return RecommendationList(items=svd_items)
@@ -99,10 +106,12 @@ def get_recommendations(
         .limit(limit)
     ).all()
     if not rows:
-        return RecommendationList(items=_fallback_recommendations(db, current_user, limit))
+        return RecommendationList(items=_fallback_recommendations(db, current_user, limit, rated_book_ids))
 
     items: list[RecommendationItem] = []
     for row in rows:
+        if row.book_id in rated_book_ids:
+            continue
         book = db.get(Book, row.book_id)
         if book is None:
             continue
@@ -114,6 +123,8 @@ def get_recommendations(
                 rank=row.rank,
             )
         )
+    if not items:
+        return RecommendationList(items=_fallback_recommendations(db, current_user, limit, rated_book_ids))
     return RecommendationList(items=items)
 
 

@@ -47,8 +47,19 @@
             \textbf{University} & : & Ho Chi Minh University of Technology \\
             \textbf{Faculty}    & : & Computer Science and Engineering \\
             \textbf{Instructor} & : & Prof. Quản Thành Thơ \\
-            \textbf{Author}     & : & Đặng Thế Đông A (2570791)
+            \textbf{Author}     & : & Đặng Thế Đông A (2570791) \\
+            \textbf{Email}      & : & a.dangthedong@hcmut.edu.vn \\
+            \textbf{Phone}      & : & 0902971858
         \end{tabular}
+    \end{flushleft}
+    \vspace{0.8cm}
+    \begin{flushleft}
+        \textbf{Project Links}
+        \begin{itemize}
+            \item \textbf{Link 1 (Shared Drive):} \url{https://drive.google.com/drive/folders/<shared-drive-id>}\\
+                  \textit{Set permission to ``Anyone with the link -- Viewer'' and include: dataset, source code, and reproduction manuals.}
+            \item \textbf{Link 2 (Demo Video):} \url{https://www.youtube.com/watch?v=<demo-video-id>}
+        \end{itemize}
     \end{flushleft}
     \vfill
     {\large Ho Chi Minh City, May 2026\par}
@@ -70,11 +81,10 @@ I also thank my family and friends for their continuous encouragement during the
 
 \clearpage
 \chapter*{Abstract}
-This report documents a full-stack book recommendation system that combines a React web frontend, a FastAPI backend, and a collaborative filtering model based on matrix factorization (implemented via stochastic gradient descent with latent factors, commonly referred to as SVD-style factorization). The system serves three stakeholder roles---end users, administrators, and data scientists---and is trained on the public Book-Crossing dataset.
+This report documents a full-stack book recommendation system that combines a React web frontend, a FastAPI backend, and a collaborative filtering model based on matrix factorization (implemented via stochastic gradient descent with latent factors, commonly referred to as SVD-style factorization) \cite{react,fastapi,matrix_factorization}. The system serves three stakeholder roles---end users, administrators, and data scientists---and is trained on the public Book-Crossing dataset \cite{bookcrossing}.
 
 After preprocessing explicit ratings and training with 80 latent factors, the model achieves a test RMSE of \textbf{0.857} on held-out ratings, with binary classification metrics (threshold 3.5 stars) of \textbf{77.1\%} accuracy, \textbf{78.3\%} precision, \textbf{96.8\%} recall, and \textbf{86.6\%} F1-score. The report covers stakeholder benefits, algorithm theory, system architecture, data preprocessing, the AI training and deployment pipeline, and evaluation methodology.
 
-\clearpage
 \tableofcontents
 \listoffigures
 \listoftables
@@ -169,7 +179,7 @@ Implement APIs, database, ML pipeline &
 
 \section{Recommender System Taxonomy}
 
-Recommender systems predict user preference for items. Common approaches include:
+Recommender systems predict user preference for items. Common approaches include \cite{recommender_systems_handbook}:
 \begin{itemize}
     \item \textbf{Content-based filtering} --- recommends items similar to those the user liked, using item features (genre, author, etc.).
     \item \textbf{Collaborative filtering} --- exploits patterns across users and items from interaction data (ratings), without requiring rich item metadata.
@@ -182,7 +192,7 @@ Let $R$ denote a sparse user--item rating matrix where $r_{ui}$ is the rating us
 
 \section{Matrix Factorization (SVD-Style Model)}
 
-Although the implementation is labeled ``SVD,'' training uses \textbf{latent factor matrix factorization} optimized with stochastic gradient descent (SGD), not a full singular value decomposition of $R$. The prediction function is:
+Although the implementation is labeled ``SVD,'' training uses \textbf{latent factor matrix factorization} optimized with stochastic gradient descent (SGD), not a full singular value decomposition of $R$ \cite{matrix_factorization}. The prediction function is:
 \begin{equation}
 \hat{r}_{ui} = \mu + b_u + b_i + \mathbf{p}_u^\top \mathbf{q}_i
 \label{eq:pred}
@@ -211,7 +221,7 @@ The deployed artifact stores \emph{item} biases and factors plus a global mean. 
 \mathrm{RMSE} = \sqrt{\frac{1}{|T|}\sum_{(u,i,r) \in T}(r - \hat{r}_{ui})^2}
 \end{equation}
 
-For classification-style metrics, ratings are binarized at threshold $\tau = 3.5$: a book is ``liked'' if $r \geq \tau$. Predictions are positive if $\hat{r}_{ui} \geq \tau$. Standard definitions apply:
+For classification-style metrics, ratings are binarized at threshold $\tau = 3.5$: a book is ``liked'' if $r \geq \tau$. Predictions are positive if $\hat{r}_{ui} \geq \tau$. Standard definitions apply \cite{ir_book}:
 \begin{align}
 \mathrm{Accuracy} &= \frac{TP + TN}{TP + TN + FP + FN} \\
 \mathrm{Precision} &= \frac{TP}{TP + FP}, \quad
@@ -260,7 +270,7 @@ Figure~\ref{fig:architecture} shows the three-tier architecture: React SPA, Fast
 
 \section{Backend Design}
 
-The backend (\texttt{backend/app/}) is built with \textbf{FastAPI} and \textbf{SQLAlchemy}. On startup, tables are created and \texttt{seed\_data()} loads books from \texttt{BX-Books.csv} if the database is empty.
+The backend (\texttt{backend/app/}) is built with \textbf{FastAPI} and \textbf{SQLAlchemy} \cite{fastapi,sqlalchemy}. On startup, tables are created and \texttt{seed\_data()} loads books from \texttt{BX-Books.csv} if the database is empty.
 
 \textbf{API routers:}
 \begin{itemize}
@@ -275,6 +285,23 @@ The backend (\texttt{backend/app/}) is built with \textbf{FastAPI} and \textbf{S
 \end{itemize}
 
 \textbf{Role-based access control} uses three roles defined in \texttt{RoleEnum}: \texttt{user}, \texttt{admin}, and \texttt{data\_scientist}. Dependencies (\texttt{require\_role}, \texttt{get\_current\_user}) enforce authorization on protected routes.
+
+\section{Swagger API Documentation Page}
+
+The backend exposes an interactive Swagger UI page for API exploration and manual testing:
+\begin{itemize}
+    \item Swagger UI: \url{http://127.0.0.1:8000/docs}
+    \item OpenAPI JSON: \url{http://127.0.0.1:8000/api/v1/openapi.json}
+\end{itemize}
+
+This page documents request/response schemas, authentication requirements, and all available endpoints grouped by tags (\texttt{auth}, \texttt{books}, \texttt{users}, \texttt{recommendations}, \texttt{admin}, \texttt{ml}, and \texttt{analytics}). It is used during development and evaluation to quickly validate endpoint behavior without building custom test clients.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{images/swagger.png}
+\caption{Swagger UI page showing grouped REST endpoints and authorization requirements for the backend APIs.}
+\label{fig:swagger-ui}
+\end{figure}
 
 \section{Database Schema}
 
@@ -291,7 +318,7 @@ Core entities include:
 
 \section{Frontend Design}
 
-The frontend (\texttt{Bookrecommendationsystemui/}) uses \textbf{React 18}, \textbf{Vite}, \textbf{React Router}, and \textbf{TanStack Query}. A shared \texttt{Layout} provides sidebar navigation and a role switcher for demo accounts.
+The frontend (\texttt{Bookrecommendationsystemui/}) uses \textbf{React 18}, \textbf{Vite}, \textbf{React Router}, and \textbf{TanStack Query} \cite{react,vite,react_router,tanstack_query}. A shared \texttt{Layout} provides sidebar navigation and a role switcher for demo accounts.
 
 \begin{table}[htbp]
 \centering
@@ -334,7 +361,7 @@ API base URL defaults to \texttt{http://127.0.0.1:8000/api/v1}, configurable via
 \textbf{Layer} & \textbf{Technologies} \\
 \midrule
 Frontend & React, TypeScript, Vite, Tailwind CSS, shadcn/ui, Recharts \\
-Backend & Python 3, FastAPI, SQLAlchemy, Pydantic, python-jose, passlib \\
+Backend & Python 3, FastAPI, SQLAlchemy, Pydantic, python-jose, passlib \cite{fastapi,sqlalchemy,pydantic,jwt_rfc} \\
 ML & NumPy, custom SGD matrix factorization \\
 Database & SQLite (via SQLAlchemy) \\
 Dev tools & pytest, Uvicorn, Alembic \\
@@ -497,7 +524,7 @@ Binary threshold $\tau$ & 3.5 \\
 
 \section{Quantitative Results}
 
-Table~\ref{tab:metrics} reports metrics produced by \texttt{train\_and\_evaluate\_svd} on the held-out test set. Training completed in approximately \textbf{1.5 seconds} for this configuration.
+Table~\ref{tab:metrics} reports metrics produced by \texttt{train\_and\_evaluate\_svd} on the held-out test set. Training completed in approximately \textbf{1.53 seconds} for this configuration.
 
 \begin{table}[htbp]
 \centering
@@ -513,7 +540,7 @@ Accuracy (\%) & 77.05 \\
 Precision (\%) & 78.31 \\
 Recall (\%) & 96.77 \\
 F1-score (\%) & 86.57 \\
-Training duration (s) & 1.52 \\
+Training duration (s) & 1.53 \\
 Ratings used & 30,000 \\
 Distinct users (train index) & 10,688 \\
 Distinct books / ISBNs (train index) & 15,674 \\
@@ -672,7 +699,6 @@ figma/
   backend/app/db/models.py  # SQLAlchemy models
   backend/dataset/          # BX CSV & model artifact
   Bookrecommendationsystemui/src/app/pages/
-  report/report.tex         # This document
 \end{verbatim}
 \end{small}
 
@@ -692,6 +718,16 @@ Koren, Y., Bell, R., and Volinsky, C.:
 \newblock Matrix Factorization Techniques for Recommender Systems.
 \newblock \emph{Computer}, 42(8):30--37, 2009.
 
+\bibitem{recommender_systems_handbook}
+Ricci, F., Rokach, L., and Shapira, B. (eds.):
+\newblock \emph{Recommender Systems Handbook}.
+\newblock Springer, 2015.
+
+\bibitem{ir_book}
+Manning, C. D., Raghavan, P., and Sch\"utze, H.:
+\newblock \emph{Introduction to Information Retrieval}.
+\newblock Cambridge University Press, 2008.
+
 \bibitem{fastapi}
 Ramírez, S.:
 \newblock FastAPI Documentation.
@@ -701,6 +737,36 @@ Ramírez, S.:
 Meta Open Source:
 \newblock React Documentation.
 \newblock \url{https://react.dev/}, 2024.
+
+\bibitem{vite}
+Vite Team:
+\newblock Vite Documentation.
+\newblock \url{https://vite.dev/guide/}, 2024.
+
+\bibitem{react_router}
+React Router Team:
+\newblock React Router Documentation.
+\newblock \url{https://reactrouter.com/}, 2024.
+
+\bibitem{tanstack_query}
+TanStack:
+\newblock TanStack Query Documentation.
+\newblock \url{https://tanstack.com/query/latest/docs/framework/react/overview}, 2024.
+
+\bibitem{sqlalchemy}
+SQLAlchemy Authors:
+\newblock SQLAlchemy Documentation.
+\newblock \url{https://docs.sqlalchemy.org/}, 2024.
+
+\bibitem{pydantic}
+Pydantic Team:
+\newblock Pydantic Documentation.
+\newblock \url{https://docs.pydantic.dev/}, 2024.
+
+\bibitem{jwt_rfc}
+Jones, M., Bradley, J., and Sakimura, N.:
+\newblock JSON Web Token (JWT), RFC 7519.
+\newblock IETF, 2015.
 
 \bibitem{project_readme}
 Book Recommendation Project:
