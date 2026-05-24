@@ -318,7 +318,7 @@ Core entities include:
 
 \section{Frontend Design}
 
-The frontend (\texttt{Bookrecommendationsystemui/}) uses \textbf{React 18}, \textbf{Vite}, \textbf{React Router}, and \textbf{TanStack Query} \cite{react,vite,react_router,tanstack_query}. A shared \texttt{Layout} provides sidebar navigation and a role switcher for demo accounts.
+The frontend (\texttt{Bookrecommendationsystemui/}) uses \textbf{React 18}, \textbf{Vite}, \textbf{React Router}, and \textbf{TanStack Query} \cite{react,vite,react_router,tanstack_query}. A shared \texttt{Layout} provides sidebar navigation, while authentication and role-based route guards control access to user/admin/data-scientist pages.
 
 \begin{table}[htbp]
 \centering
@@ -349,6 +349,45 @@ API base URL defaults to \texttt{http://127.0.0.1:8000/api/v1}, configurable via
     \item Up to 5000 unrated candidate books are scored; top-$N$ returned with reason text.
     \item If SVD path yields no items, seeded recommendations or preference/popularity fallback is used.
 \end{enumerate}
+
+\subsection{API Response Mapping to Recommendation Page}
+
+For each authenticated user, the backend returns a user-specific recommendation payload. The frontend Home page (\texttt{/}) reads this payload and renders each card directly from the response fields:
+\begin{itemize}
+    \item \texttt{book.title}, \texttt{book.author}, \texttt{book.cover\_url} $\rightarrow$ book card content
+    \item \texttt{predicted\_rating} $\rightarrow$ ``Predicted rating'' badge/value
+    \item \texttt{reason} $\rightarrow$ ``Why recommended'' explanation text
+    \item \texttt{rank} $\rightarrow$ server-side ordering of top-$N$ items
+\end{itemize}
+
+A representative response from \texttt{GET /users/me/recommendations?limit=3} is:
+\begin{small}
+\begin{verbatim}
+{
+  "items": [
+    {
+      "book": {
+        "id": 125,
+        "title": "Example Book",
+        "author": "Author Name",
+        "genre": "Mystery",
+        "rating": 4.3,
+        "cover_url": "https://...",
+        "description": "...",
+        "year_published": 2001,
+        "page_count": 320,
+        "isbn": "1234567890"
+      },
+      "reason": "Predicted by SVD collaborative filtering from your ratings",
+      "predicted_rating": 4.71,
+      "rank": 1
+    }
+  ]
+}
+\end{verbatim}
+\end{small}
+
+Thus, the recommendation page is personalized per user because the request is authenticated by JWT, and the server computes results from that user's rating history before returning the response.
 
 \section{Technology Stack}
 
